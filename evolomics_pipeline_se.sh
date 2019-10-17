@@ -17,8 +17,9 @@ echo "start time:" $start_time
 
 job="rizoctonia8" #manually set job name here before running
 #sra="/full/path/to/sra/files" #sra files (source) directory (no trailing /)
-ref_g="/home/cluster/chiranjeev/sources/ref_chr_mt_pt_o_sativa.fa" #full path of your (source) reference genome.fa
-gtf_f="/home/cluster/chiranjeev/sources/Oryza_sativa.IRGSP-1.0.40.gtf" #full path of (source) gtf file.gtf
+ref_g="/home/cluster/chiranjeev/sources/ref_chr_mt_pt_o_sativa.fa" #full path of your (source) reference genome (.fa)
+gtf_f="/home/cluster/chiranjeev/sources/Oryza_sativa.IRGSP-1.0.40.gtf" #full path of (source) gtf (.gtf)
+deseq2="/path/to/deseq2/R/script.R" #full path of the DeSeq2 R script (.R)
 
 echo "job name:" $job
 echo "sra location:" $sra
@@ -33,7 +34,7 @@ echo "gtf file location:" $gtf_f
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Creating Directory hierachy------"
 mkdir -p ~/$job/data/workflow_SE/results/fastqc/
 mkdir -p ~/$job/data/workflow_SE/results/fastq_files/
-mkdir -p ~/$job/data/workflow_SE/results/cutadapt/
+mkdir -p ~/$job/data/workflow_SE/results/fastp/
 mkdir -p ~/$job/data/workflow_SE/results/featureCounts/
 mkdir -p ~/$job/data/workflow_SE/results/hisat2/
 mkdir -p ~/$job/data/workflow_SE/results/samtools/
@@ -44,6 +45,13 @@ mkdir -p ~/$job/data/workflow_SE/gtf/	#chiranjeevdas
 mkdir -p ~/$job/data/workflow_SE/results/fastp_preqc/	#chiranjeevdas
 mkdir -p ~/$job/data/workflow_SE/results/fastp_reports/
 mkdir -p ~/$job/data/workflow_SE/results/fastqc_post_fastp/	#chiranjeevdas
+
+mkdir -p ~/$job/scripts/ #chiranjeevdas
+
+mkdir -p ~/$job/data/workflow_SE/results/stringtie/gtfs/
+mkdir -p ~/$job/data/workflow_SE/results/stringtie/abundance/
+mkdir -p ~/$job/data/workflow_SE/results/stringtie/merge/gtfs/
+mkdir -p ~/$job/data/workflow_SE/results/stringtie/merge/abundance/
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Made the Directories-------"
 #END
@@ -66,7 +74,7 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Additional tasks complete-------"
 
 #SRA_toolkit- Fastq--dump
 
-#: << 'END'
+: << 'END'
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "----STARTING THE PIPELINE------"
 echo "---------Running fastq-dump-----------"
 
@@ -89,7 +97,7 @@ rsync -a -h -v -r -P -t --remove-source-files *.fastq.gz ~/data/workflow_SE/resu
 echo "-----Moved fastq to results fastq_files folder------"
 
 
-#END
+END
 
 
 ##------------------------------------------------##
@@ -97,7 +105,7 @@ echo "-----Moved fastq to results fastq_files folder------"
 
 ## Quality Check using Fastqc##
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing Trimming and Quality check------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing Quality check------"
 
 cd ~/$job/data/workflow_SE/results/fastq_files
 
@@ -135,13 +143,13 @@ do
   #USE your required adapter after -a, default = automatic detection
 
 done
- 
+
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "------Done trimming-----"
 
 rsync -a -h -v -r -P -t  *_trimmed.fastq.gz ~/$job/data/workflow_SE/results/fastp_preqc/
-rsync -a -h -v -r -P -t --remove-source-files *_trimmed.fastq.gz ~/$job/data/workflow_SE/results/cutadapt/
+rsync -a -h -v -r -P -t --remove-source-files *_trimmed.fastq.gz ~/$job/data/workflow_SE/results/fastp/
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moved to results cutadapt--------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moved to results fastp--------"
 
 #END
 
@@ -186,6 +194,7 @@ genome=~/$job/data/workflow_SE/reference_genome/ref_genome.fa
 ##building index
 hisat2-build -p 50 $genome index #resource limit #chiranjeevdas 
 #-p = number of threads
+
 #END
 
 ##----------------------------------------##
@@ -194,7 +203,7 @@ hisat2-build -p 50 $genome index #resource limit #chiranjeevdas
 
 ##Doing Alignment
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Aligning with indices--------"
-cd ~/$job/data/workflow_SE/results/cutadapt/
+cd ~/$job/data/workflow_SE/results/fastp/
 
 for file in $(ls)
  
@@ -205,9 +214,7 @@ for file in $(ls)
 
  done
 
-
- echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done alignment and moved SAM files in results hisat2------"
-
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done alignment and moved SAM files in results hisat2------"
 
 #END
 
@@ -234,27 +241,72 @@ rsync -a -h -v -r -P -t --remove-source-files *.bam ~/$job/data/workflow_SE/resu
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Moved BAM file to samtool folder of results-----------"
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done with SAM tools---------"
+
 #END
 
 ## ---------------------------------------------------------##
 
 #: << 'END'
 
-###FeatureCount tool
+### String Tie
 
-rsync -a -h -v -r -P -t $gtf_f ~/$job/data/workflow_SE/gtf/all.gtf #refer to DECLARATIONS #chiranjeevdas
-gtf=~/$job/data/workflow_SE/gtf/all.gtf #chiranjeevdas
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Running stringtie 1-------------"
+
+cd ~/$job/data/workflow_SE/results/samtools/
+
+for file in $(ls)
+	
+	do
+		stringtie $file -p 50 -v -G $gtf -o ~/$job/data/workflow_SE/results/stringtie/gtfs/string_$file.gtf -A ~/$job/data/workflow_SE/results/stringtie/abundance/stringtie_out_$file.txt
+	
+	done
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done with stringtie 1 ; Created various GTFs---------"
+
+
+cd ~/$job/data/workflow_SE/results/stringtie/gtfs/
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Running stringtie merge---------"
+
+ls *.gtf > gtf_list
+
+stringtie --merge -G $gtf -o ~/$job/data/workflow_SE/results/stringtie/merge/gtfs/stringstie_merged.gtf gtf_list
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done with stringtie merge---------"
+
+#: << 'END' <COMMENT OUT WHEN USING FEATURE COUNTS>
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Running stringtie 2---------"
+
+cd ~/$job/data/workflow_SE/results/samtools/
+
+for file in $(ls)
+	
+	do
+		stringtie $file -p 50 -v -e -G ~/$job/data/workflow_SE/results/stringtie/merge/gtfs/stringstie_merged.gtf -o ~/$job/data/workflow_SE/results/stringtie/gtfs/merge_output_stringtie_$file.gtf -A ~/$job/data/workflow_SE/results/stringtie/merge/abundance/stringtie_merge_out_$file.txt
+	
+	done
+
+#END <COMMENT OUT WHEN USING FEATURE COUNTS>
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done with all instances of stringtie---------"
+
+#END
+
+##-----------------------------------------##
+
+#: << 'END'
+
+###FeatureCount tool (USING GTF CREATED BY STRINGTIE)
+
+gtf=~/$job/data/workflow_SE/results/stringtie/merge/gtfs/stringstie_merged.gtf #chiranjeevdas gtf=gtf generated by stringtie
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Generating feature counts-------------"
- cd ~/$job/data/workflow_SE/results/samtools/
-  for file in $(ls)
 
- do
+cd ~/$job/data/workflow_SE/results/samtools/
 
- featureCounts -T 50 -t exon -g ID -a $gtf -o counts2.txt -M *.bam	#resource limit #chiranjeevdas
+featureCounts -T 50 -t exon -g transcript_id -a $gtf -o counts.txt -M *.bam	#resource limit #chiranjeevdas
 	#-T number of threads
-
- done
 
 echo "---------Done Generating count data-----------"
 
@@ -262,25 +314,59 @@ rsync -a -h -v -r -P -t --remove-source-files *.txt ~/$job/data/workflow_SE/resu
 rsync -a -h -v -r -P -t --remove-source-files *.summary ~/$job/data/workflow_SE/results/featureCounts/
 
 echo "--------Results are in featureCount folder of results---------"
+
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Finished with featurecounts-----"
+
+#END
+
+##-----------------------------------------##
+
+#: << 'END'
+
+### DeSeq2 in R
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Calling R for DeSeq2-------------"
+
+cp $deseq2 ~/$job/scripts/deseq2.R
+cd ~/$job/scripts/
+
+r deseq2.R
+
+mv res.csv bak_res.csv
+echo -n "", > res.csv; cat bak_res.csv >> res.csv #fixes the left shift of column names
+rm bak_res.csv 
+
+mv res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
+echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
+rm bak_res_PAdj_cutoff.csv 
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------DeSeq2 Complete-------------"
 
 #END
 
 ##-----------------------------------------------##
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------END OF PIPELINE---------"
-exit 
-
-
-############################################################
-#################### END OF SCRIPT #########################
 ############################################################
 
 end_time=`date +%s`
 echo "############################################################"
+echo
+echo "time taken:"
+echo
 echo "start time:" $start_time
 echo "end time:" $end_time
 echo
 run_time=$((end_time-start_time))
-echo "runtime:" $run_time
+echo "runtime (in seconds):" $run_time
+echo -n "runtime (in minutes): "; awk "BEGIN {print $run_time/60}"
+echo -n "runtime (in hours): "; awk "BEGIN {print $run_time/3600}"
+echo
 echo "############################################################"
+
+############################################################
+
+exit
+
+############################################################
+#################### END OF SCRIPT #########################
 ############################################################
