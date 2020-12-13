@@ -1,6 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=job_name
+#SBATCH --job-name=45
 #SBATCH --ntasks=50
+
+#################################################################
+#################     USER INSTRUCTIONS     #####################
+#################################################################
+
+# 1. Modify the "job-name" above (OPTIONAL)
+# 2. In the "DECLARATIONS/PATHS" section below, put a project name.
+# 3. In the "DECLARATIONS/PATHS" section below, put a unique job name. NB. This is specific to each run of the pipeline and must be edited every time you run it.
+# 4. Populate the 'sra', 'fatstq_f', 'ref_g', 'gtf_f' & 'deseq2' paths (you may ommit paths if you are not running that step). Ensure the paths/files exist.
+# 5. Check the number of threads you CPU can process and change the variables in the lines which can be found by searching for the tag "#resource limit"
+# 5. Save the edited script as a copy and run with sbatch <script name>
 
 #################################################################
 #################     USER SCRIPT START     #####################
@@ -12,202 +23,152 @@ echo "start time:" $start_time
 #################################################################
 #################   DECLARATIONS / PATHS   ######################
 #################################################################
-proj="rice_rsolani_zheng1" #manually set job name here before running, one project can have multiole jobs
-job="rice_rsolani_zheng1" #manually set job name here before running
+proj="rsolani" #manually set job name here before running, one project can have multiole jobs
+job="project_y" #manually set job name here before running
 
-sra="/home/cluster/ankur/project/rice_rsolani_zheng/data/sra" #sra files (source) directory (no trailing /)
-fastq_f="" #fastq files (source) directory (no trailing /)
-ref_g="/home/cluster/ankur/project/rice_rsolani_zheng/data/ref/ref_sativa.fa" #full path of your (source) reference genome (.fa)
-gtf_f="/home/cluster/ankur/project/rice_rsolani_zheng/data/ref/Oryza_sativa.IRGSP.gtf" #full path of (source) gtf (.gtf)
+sra="/home/cluster/akash/projects/rsolani_nopaper/data/srarawdata" #sra files (source) directory (no trailing /)
+fastq_f="path/to/fastq/folder" #fastq files (source) directory (no trailing /)
+ref_g="/home/cluster/evolomics/projects/rice_rsolani/data/ref_genome/ref_chr_mt_pt_o_sativa.fa" #full path of your (source) reference genome file ending in .fa OR .fasta
+gtf_f="/home/cluster/evolomics/projects/rice_rsolani/data/gtf/Oryza_sativa.IRGSP-1.0.40.gtf" #full path of (source) gtf file ending in .gtf
 deseq2="/path/to/deseq2/R/script.R" #full path of the DeSeq2 R script (.R)
 
 #################################################################
 ################ Start of Pipline workflow_PE ###################
 #################################################################
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "----STARTING THE PIPELINE------"
 
 #: <<'END'
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Creating Directory hierachy------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "----------Creating Directory hierachy------"
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_reports/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/hisat2/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/samtools/
 
-mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/sra/	#chiranjeevdas
-mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/	#chiranjeevdas
-mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/gtf/	#chiranjeevdas
-mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_preqc/	#chiranjeevdas
-mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_reports/
-mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc_post_fastp/	#chiranjeevdas
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/gtf/
 
-#mkdir -p ~/projects/$proj/pipeline_result/$job/scripts/ #chiranjeevdas
+#: << 'END'
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Made the Directories-------"
-#END
+#ADD A HASH BEFORE THE COLON ABOVE IF INPUT FILES ARE SRA (ALSO FIND THE CORRESPONDING TAG BELOW)
+#REMOVE THE HASH (IF ANY) BEFORE THE COLON ABOVE IF INPUT FILES ARE FASTQ/FASTQ.GZ (ALSO FIND THE CORRESPONDING TAG BELOW)
 
-#################################################################
-############## ADDITIONAL TASKS/ BYPASSES #chiranjeevdas#########
-#################################################################
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Running fastq-dump-----------"
 
-#KEEP THIS AREA CLEAR WHEN NOT IN USE
-
-#: <<'END'
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing additional tasks-------"
-cp -v $fastq_f/*.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/ 	#chiranjeevdas
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Additional tasks complete-------"
-
-#END
-
-#################################################################
-
-#SRA_toolkit- Fastq--dump
-
-: << 'END'
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "----STARTING THE PIPELINE------"
-echo "---------Running fastq-dump-----------"
-
-cp -v $sra/* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/sra/	#chiranjeevdas
-cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/sra/
+cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
 
 ##SRA to Fastq files
 
-for file in $(ls | sed 's/.sra//')
+for file in $(ls $sra)
 do
 
- fasterq-dump $file.sra --split-files -v -p -b 100 -c 1024 -m 10240 -e 50 	#resource limit #chiranjeevdas
+fasterq-dump $sra/$file --split-files -v -p -b 100 -c 1024 -m 10240 -e 50       #resource limit
 
 done
 
-pigz -v *.fastq #multhreaded gzip #resource limit #chiranjeevdas
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Conversion to FastQ complete. Compressing now.-----------"
 
-mv -v *.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
+pigz -v *.fastq #multhreaded gzip #resource limit
+
+fastq_f=~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "-----All SRAs split and converted to fastq.gz----"
+
+#END
+
+#ADD A HASH BEFORE THE END ABOVE IF INPUT FILES ARE SRA (ALSO FIND THE CORRESPONDING TAG ABOVE)
+#REMOVE THE HASH (IF ANY) BEFORE THE END ABOVE IF INPUT FILES ARE FASTQ/FASTQ.GZ (ALSO FIND THE CORRESPONDING TAG ABOVE)
 
 
-echo "-----Moved fastq to results fastq_files folder------"
+##Trimming by fastp
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "------Trimming by fastp------"
 
+cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp
+find $fastq_f -name "*.fastq.gz" | sort | paste - - | while read A B
 
-END
+do
 
+a=`basename ${A} | sed 's/.sra_1/_1/' | awk -F "." '{print $1}'`
+b=`basename ${B} | sed 's/.sra_2/_2/' | awk -F "." '{print $1}'`
 
-##------------------------------------------------##
-: << 'END'
+echo ""
+echo "Processing $a and $b"
 
-## Quality Check using Fastqc##
+fastp --thread=16 --length_required=10 --qualified_quality_phred=32 --in1=${A} --in2=${B} --out1=$a\_trimmed.fastq.gz --out2=$b\_trimmed.fastq.gz --json=$a.json --html=$a.html
+  #--thread= number of worker threads (max 16)
+  #USE your required adapter after -a, default = automatic detection
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing Quality check------"
+mv -v $a.json ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_reports/`echo $a | awk -F "_" '{print $1".json"}'`
+mv -v $a.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_reports/`echo $a | awk -F "_" '{print $1".html"}'`
 
-cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files
+echo ""
+echo "$a and $b trimmed. Report generated and moved to results fastp_reports!!!"
 
-echo "Doing quality checking"
+done
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "------All trimming completed!!!----"
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing QC after trimming------"
+
+cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
 
 f_ls="$(ls)"
 
-fastqc -t 50 $f_ls #resource limit #chiranjeevdas
+fastqc -q -t 50 $f_ls #resource limit
 #-t = number of threads (250 MB memory required per thread)
 
-mv -v *fastqc.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
-mv -v *fastqc.zip ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
+ls | awk -F "." '{print $1}' | uniq | while read report
+
+do
+
+mv -v $report*.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/`echo $report | awk -F "." '{print $1}'`.html
+mv -v $report*.zip ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/`echo $report | awk -F "." '{print $1}'`.zip
+
+done
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Done quality check and report generated!!----------"
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Moved to results fastqc!!----------"
 
-END
-
-#--------------------------------------------###
-
-#: << 'END'
-
-##Trimming by fastp
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "------Trimming by fastp------"
-    
-cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
-
-find ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/ -name "*.fastq.gz" | sort | paste - - | while read A B
-
-do
-
-fastp -V --thread=16 --length_required=10 --qualified_quality_phred=30 --in1=${A}.fastq.gz --in2=${B}.fastq.gz --out1=${A}\_trimmed.fastq.gz --out2=${A}\_trimmed.fastq.gz --json=${A}.json --html=${A}.html	#chiranjeevdas
-
-mv -v *.html *.json ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_reports/
-  #--thread= number of worker threads (max 16)
-  #USE your required adapter after -a, default = automatic detection
-
-done
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "------Done trimming-----"
-
-#cp -v  *_trimmed.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_preqc/
-mv -v *_trimmed.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moved to results fastp--------"
 
 #END
 
 #: << 'END'
 
-## Quality Check using Fastqc AGAIN##
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing Quality check after trimming------"
-
-cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
-
-#find ~/data/workflow_PE/results/fastq_files -name "*.fastq.gz" | sort | paste - - | while read A B 
-
-echo "Doing quality checking"
-
-f_ls="$(ls)"
-
-fastqc -t 50 $f_ls #resource limit #chiranjeevdas
-#-t = number of threads (250 MB memory required per thread)
-
-mv -v *fastqc.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc_post_fastp/
-mv -v *fastqc.zip ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc_post_fastp/
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Done quality check and report generated!!----------"
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Moved to results fastqc_post_fastp!!----------"
-
-
-#END
-
-#: << 'END'
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Preparing for Alignment----------"
 
 ##Index building and Read alignment using hisat2## 
 
-cp -v $ref_g ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_genome.fa #chiranjeevdas
-cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ #chiranjeevdas
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Locating and placing reference genome------------"
+cp -v $ref_g ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_genome.fa
+cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"-----Building indices-----"
-
-genome=~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_genome.fa
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "-----Building indices-----"
 
 ##building index
-hisat2-build -p 50 $genome index #resource limit #chiranjeevdas 
+hisat2-build -p 50 ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_genome.fa index #resource limit
 #-p = number of threads
 
 #END
 
-##----------------------------------------##
-
-#: << 'END'
-
 ##Doing Alignment
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Aligning with indices--------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "----------Aligning with indices--------"
+
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
 
-find ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/ -name "*.gz_trimmed_fastq.gz" | sort | paste - - | while read A B
- 
- do
+find ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/ -name "*_trimmed.fastq.gz" | sort | paste - - | while read A B
 
-hisat2 --threads 50 --dta -x ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/index -1 ${A} -2 ${B} -S  ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/hisat2/${A}.sam		#resource limit #chiranjeevdas 
+do
+
+a=`basename ${A} | awk -F "." '{print $1}' | awk -F "_" '{print $1}'`
+
+hisat2 --threads 50 --dta -x ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/index -1 ${A} -2 ${B} -S  ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/hisat2/$a.sam		#resource limit #chiranjeevdas 
  	#--threads = number of simultaneous alignments
+done
 
- done
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done alignment and moved SAM files in results hisat2------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done alignment and placed SAM files in results hisat2------"
 
 #END
 
@@ -217,7 +178,7 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done alignment and moved SAM files in
 
 ##Converting sam files to bam files using SAMtools
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"------------Running SAM Tools---------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Running SAM Tools to Convert SAM to BAM---------"
 
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/hisat2/
 
@@ -225,17 +186,22 @@ for file in $(ls)
 
 do
 
-samtools sort -@ 30 -o ${file}.bam ${file} 	#resource limit #chiranjeevdas
+a=`echo ${file} | awk -F "." '{print $1}'`
+
+echo "Processing ${file}"
+samtools sort -@ 30 -o $a.bam ${file} 	#resource limit
 	#-@ number of threads (in addition to main thread)
+echo "${file} converted"
 done
 
-echo "-----converted sam to bam-----"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "-----Converted all SAM files to BAM-----"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Moving BAM files to results samtools-----------"
 
 mv -v *.bam ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/samtools/
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Moved BAM file to samtool folder of results-----------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Moved BAM files-----------"
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done with SAM tools---------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Done with SAM tools !!!---------"
 
 #END
 
@@ -244,31 +210,31 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Done with SAM tools---------"
 
 ###FeatureCount tool
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Generating feature counts-------------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Generating feature counts...-------------"
 
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/samtools/
 
-featureCounts -T 50 -t gene -g gene_id -a $gtf_f -o counts.txt -M *.bam	#resource limit #chiranjeevdas
+featureCounts -T 50 -t gene -g gene_id -a $gtf_f -o counts.txt -M *.bam	#resource limit
 	#-T number of threads
 
-echo "---------Done Generating count data-----------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Done Generating count data-----------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moving Results...-----------"
 
 mv -v *.txt ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
 mv -v *.summary ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
 
-echo "--------Results are in featureCount folder of results---------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Results moved to results featureCounts---------"
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Finished with featurecounts-----"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Finished with featureCounts!!!-----"
 
 #END
 
 ##-----------------------------------------##
 
 : << 'END'
-
 ### DeSeq2 in R
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Calling R for DeSeq2-------------"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Calling R for DeSeq2-------------"
 
 cp $deseq2 ~/projects/$proj/pipeline_result/$job/scripts/deseq2.R
 cd ~/projects/$proj/pipeline_result/$job/scripts/
@@ -281,15 +247,31 @@ rm bak_res.csv
 
 mv -v res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
 echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
-rm bak_res_PAdj_cutoff.csv 
+rm bak_res_PAdj_cutoff.csv
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------DeSeq2 Complete-------------"
 
 END
 
 ##-----------------------------------------------##
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Cleaning Up-------------"
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Deleting SAM files-------------"
+rm -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/hisat2/*
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Deleting Trimmed FastQ Files-------------"
+rm -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/*
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Deleting FastQ files-------------"
+rm -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/*
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Clean Up Completed !!!-------------"
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Compressing BAM files-------------"
+cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/samtools/
+echo -e "\nCompressing:\n"
+pigz -v -9 *
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Compression Completed !!!-------------"
+
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------END OF PIPELINE---------"
-############################################################
 
 end_time=`date +%s`
 echo "############################################################"
@@ -305,8 +287,6 @@ echo -n "runtime (in minutes): "; awk "BEGIN {print $run_time/60}"
 echo -n "runtime (in hours): "; awk "BEGIN {print $run_time/3600}"
 echo
 echo "############################################################"
-
-############################################################
 
 exit
 
