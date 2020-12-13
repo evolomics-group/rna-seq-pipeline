@@ -1,3 +1,7 @@
+#!/bin/bash
+#SBATCH --job-name=job_name
+#SBATCH --ntasks=50
+
 #################################################################
 #################     USER SCRIPT START     #####################
 #################################################################
@@ -10,6 +14,7 @@ echo "start time:" $start_time
 #################################################################
 proj="rice_rsolani_zheng1" #manually set job name here before running, one project can have multiole jobs
 job="rice_rsolani_zheng1" #manually set job name here before running
+
 sra="/home/cluster/ankur/project/rice_rsolani_zheng/data/sra" #sra files (source) directory (no trailing /)
 fastq_f="" #fastq files (source) directory (no trailing /)
 ref_g="/home/cluster/ankur/project/rice_rsolani_zheng/data/ref/ref_sativa.fa" #full path of your (source) reference genome (.fa)
@@ -50,7 +55,7 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Made the Directories-------"
 #: <<'END'
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing additional tasks-------"
-rsync -a -h -v -r -P -t $fastq_f/*.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/ 	#chiranjeevdas
+cp -v $fastq_f/*.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/ 	#chiranjeevdas
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Additional tasks complete-------"
 
 #END
@@ -63,7 +68,7 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Additional tasks complete-------"
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "----STARTING THE PIPELINE------"
 echo "---------Running fastq-dump-----------"
 
-rsync -a -h -v -r -P -t $sra/* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/sra/	#chiranjeevdas
+cp -v $sra/* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/sra/	#chiranjeevdas
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/sra/
 
 ##SRA to Fastq files
@@ -77,7 +82,7 @@ done
 
 pigz -v *.fastq #multhreaded gzip #resource limit #chiranjeevdas
 
-rsync -a -h -v -r -P -t --remove-source-files *.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
+mv -v *.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
 
 
 echo "-----Moved fastq to results fastq_files folder------"
@@ -102,12 +107,13 @@ f_ls="$(ls)"
 fastqc -t 50 $f_ls #resource limit #chiranjeevdas
 #-t = number of threads (250 MB memory required per thread)
 
-rsync -a -h -v -r -P -t --remove-source-files *fastqc.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
-rsync -a -h -v -r -P -t --remove-source-files *fastqc.zip ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
+mv -v *fastqc.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
+mv -v *fastqc.zip ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Done quality check and report generated!!----------"
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Moved to results fastqc!!----------"
+
 END
 
 #--------------------------------------------###
@@ -120,11 +126,12 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "------Trimming by fastp------"
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
 
 find ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/ -name "*.fastq.gz" | sort | paste - - | while read A B
+
 do
 
 fastp -V --thread=16 --length_required=10 --qualified_quality_phred=30 --in1=${A}.fastq.gz --in2=${B}.fastq.gz --out1=${A}\_trimmed.fastq.gz --out2=${A}\_trimmed.fastq.gz --json=${A}.json --html=${A}.html	#chiranjeevdas
 
-rsync -a -h -v -r -P -t --remove-source-files *.html *.json ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_reports/
+mv -v *.html *.json ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_reports/
   #--thread= number of worker threads (max 16)
   #USE your required adapter after -a, default = automatic detection
 
@@ -132,8 +139,8 @@ done
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "------Done trimming-----"
 
-rsync -a -h -v -r -P -t  *_trimmed.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_preqc/
-rsync -a -h -v -r -P -t --remove-source-files *_trimmed.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
+#cp -v  *_trimmed.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_preqc/
+mv -v *_trimmed.fastq.gz ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moved to results fastp--------"
 
@@ -145,7 +152,7 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moved to results fastp--------"
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"----------Doing Quality check after trimming------"
 
-cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp_preqc/
+cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
 
 #find ~/data/workflow_PE/results/fastq_files -name "*.fastq.gz" | sort | paste - - | while read A B 
 
@@ -156,8 +163,8 @@ f_ls="$(ls)"
 fastqc -t 50 $f_ls #resource limit #chiranjeevdas
 #-t = number of threads (250 MB memory required per thread)
 
-rsync -a -h -v -r -P -t --remove-source-files *fastqc.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc_post_fastp/
-rsync -a -h -v -r -P -t --remove-source-files *fastqc.zip ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc_post_fastp/
+mv -v *fastqc.html ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc_post_fastp/
+mv -v *fastqc.zip ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc_post_fastp/
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Done quality check and report generated!!----------"
 
@@ -166,16 +173,16 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "------------Moved to results fastqc_post_fas
 
 #END
 
-
 #: << 'END'
 
 ##Index building and Read alignment using hisat2## 
 
-rsync -a -h -v -r -P -t  $ref_g ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_sativa.fa #chiranjeevdas
+cp -v $ref_g ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_genome.fa #chiranjeevdas
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ #chiranjeevdas
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"-----Building indices-----"
-genome=~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_sativa.fa
+
+genome=~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/ref_genome.fa
 
 ##building index
 hisat2-build -p 50 $genome index #resource limit #chiranjeevdas 
@@ -215,14 +222,16 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`]"------------Running SAM Tools---------"
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/hisat2/
 
 for file in $(ls)
+
 do
- samtools sort -@ 30 -o ${file}.bam ${file} 	#resource limit #chiranjeevdas
+
+samtools sort -@ 30 -o ${file}.bam ${file} 	#resource limit #chiranjeevdas
 	#-@ number of threads (in addition to main thread)
 done
 
 echo "-----converted sam to bam-----"
 
-rsync -a -h -v -r -P -t --remove-source-files *.bam ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/samtools/
+mv -v *.bam ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/samtools/
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"--------Moved BAM file to samtool folder of results-----------"
 
@@ -244,8 +253,8 @@ featureCounts -T 50 -t gene -g gene_id -a $gtf_f -o counts.txt -M *.bam	#resourc
 
 echo "---------Done Generating count data-----------"
 
-rsync -a -h -v -r -P -t --remove-source-files *.txt ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
-rsync -a -h -v -r -P -t --remove-source-files *.summary ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
+mv -v *.txt ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
+mv -v *.summary ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
 
 echo "--------Results are in featureCount folder of results---------"
 
@@ -266,11 +275,11 @@ cd ~/projects/$proj/pipeline_result/$job/scripts/
 
 r deseq2.R
 
-mv res.csv bak_res.csv
+mv -v res.csv bak_res.csv
 echo -n "", > res.csv; cat bak_res.csv >> res.csv #fixes the left shift of column names
 rm bak_res.csv
 
-mv res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
+mv -v res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
 echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
 rm bak_res_PAdj_cutoff.csv 
 
