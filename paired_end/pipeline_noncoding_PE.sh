@@ -55,6 +55,8 @@ mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringti
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/merge/gtfs/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/merge/abundance/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/ctabs/
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/degs/stringtie
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/degs/featurecounts
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/gtf/
 
@@ -309,7 +311,7 @@ dds <- DESeqDataSetFromTximport(txi, sampleTable, ~condition)
 dds <- dds[rowSums(counts(dds)) > 5,]
 dds <-DESeq(dds)
 
-vst <- vst(dds, blind=FALSE)					
+vst <- vst(dds, blind=FALSE)
 
 # Plot PCA plot
 plotPCA(vst, intgroup="condition", ntop=nrow(counts(dds)))
@@ -346,8 +348,8 @@ grp.mean <- sapply(levels(dds$condition),
 norm.counts <- counts(dds, normalized=TRUE)
 all <- data.frame(res, assay(vst))
 nrow(all)
-write.table(all, file="$proj_$job_deseq2_sample_vs_control.csv",sep=",")
-write.table(assay(vst), file="~/$proj_$job_vst",sep=",")
+write.table(all, file="deseq2_sample_vs_control.csv",sep=",")
+write.table(assay(vst), file="vst_table.csv",sep=",")
 
 EOF
 
@@ -356,6 +358,12 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------executing the ctab to deseq2 
 cd ~/projects/$proj/pipeline_result/$job/scripts/
 
 r ctab_to_deseq2.r
+
+sleep 15
+
+rm -v ~/projects/$proj/pipeline_result/$job/scripts/ctab_to_deseq2.r
+sleep 02
+mv -v ~/projects/$proj/pipeline_result/$job/scripts/* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/degs/stringtie/
 
 #END
 
