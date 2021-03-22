@@ -41,6 +41,8 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "----STARTING THE PIPELINE------"
 
 #: <<'END'
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "----------Creating Directory hierachy------"
+
+mkdir -p ~/projects/$proj/pipeline_result/$job/scripts/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastqc/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/
@@ -264,8 +266,99 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------stringtie complete-----------
 
 #END
 
-cd /projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs
-###FeatureCount tool
+#: << 'END'
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------creating r script to read ctabs and give DEGs-------------"
+
+cat > ~/projects/$proj/pipeline_result/$job/scripts/ctab_to_deseq2.r<< EOF
+#!/usr/bin/r
+
+library("stringr")
+library("DESeq2")
+library("ggplot2")
+library("dplyr")
+library("readr")
+library("tximport")
+library("ashr")
+library("tidyverse")
+library("apeglm")
+library("vsn")
+library("gplots")
+
+setwd("/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs")
+getwd()
+list.files()
+
+#Add all .ctab files in a vector
+files <- list.files(getwd(), pattern=".ctab", all.files=FALSE, full.names=FALSE) 
+
+# Read the ctab files, and store in txi
+tmp <- read_tsv(files[1])
+tx2gene <- tmp[, c("t_name", "gene_id")]
+txi <- tximport(files=files, type = "stringtie", tx2gene = tx2gene) 
+
+# Identify and count the sample and control files
+no_cont <-length(grep("control",files,ignore.case=TRUE))
+no_samp <- (length(files) - no_cont)
+
+# Define conditions for the samples
+sampleTable <- data.frame(condition = factor(c(rep("Sample",no_samp), rep("Control",no_cont))))
+rownames(sampleTable) <- colnames(txi$counts)
+
+dds <- DESeqDataSetFromTximport(txi, sampleTable, ~condition)
+dds <- dds[rowSums(counts(dds)) > 5,]
+dds <-DESeq(dds)
+
+vst <- vst(dds, blind=FALSE)					
+
+# Plot PCA plot
+plotPCA(vst, intgroup="condition", ntop=nrow(counts(dds)))
+  
+# Explore PCA plot
+a <- DESeq2::plotPCA(vst, intgroup="condition")
+a + geom_label(aes(label = coldata$condition),)
+nudge <- position_nudge(y = 1)
+a + geom_label(aes(label = coldata$condition), position = nudge)
+a + geom_text(aes(label = coldata$condition), position = nudge, size=3 )
+boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation_plasma", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
+boxplot(assay(vst), col= c("Red"), pch=".",
+vertical=TRUE, cex.axis=0.5, main = "Boxplot of plasma samples using vst method",
+las=2, ylab="assay(vst)", xlab="Samples", ylim=c(-10,30),font.main= 5, font.axis=0.5, font.lab=2 )
+
+# Plot correlation heatmap
+cU <-cor( as.matrix(assay(vst)))
+cols <- c("dodgerblue3", "firebrick3")[coldata$condition]
+heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
+            labCol=colnames(cU), labRow=colnames(cU),
+            distfun=function(c) as.dist(1 - c),
+            trace="none",
+            Colv=TRUE, cexRow=0.9, cexCol=0.9, key=F,
+            font=2,
+            RowSideColors=cols, ColSideColors=cols)
+#dispersion plot
+plotDispEsts(dds)
+
+res <- results(dds, contrast=c("condition","Sample","Control" ))
+summary(res)
+grp.mean <- sapply(levels(dds$condition),
+                          function(lvl)
+                            rowMeans(counts(dds,normalized=TRUE)[,dds$condition== lvl]))
+norm.counts <- counts(dds, normalized=TRUE)
+all <- data.frame(res, assay(vst))
+nrow(all)
+write.table(all, file="$proj_$job_deseq2_sample_vs_control.csv",sep=",")
+write.table(assay(vst), file="~/$proj_$job_vst",sep=",")
+
+EOF
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------executing the ctab to deseq2 script-------------"
+
+cd ~/projects/$proj/pipeline_result/$job/scripts/
+
+r ctab_to_deseq2.r
+
+#END
+
 : << 'END'
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Generating feature counts...-------------"
