@@ -13,7 +13,7 @@
 # 5. Save the edited script as a copy and run with sbatch <script name>
 
 # IMPORTANT: The control files of the data set must have the work "control" in the filename
-# 			 This is used for DESeq2. e.g. control101.fastq.gz, 1_control.sra, 1controlb.fastq.gz
+# This is used for DESeq2. e.g. control101.fastq.gz, 1_control.sra, 1controlb.fastq.gz
 
 #################################################################
 #################     USER SCRIPT START     #####################
