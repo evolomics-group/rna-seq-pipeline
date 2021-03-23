@@ -152,6 +152,10 @@ echo "##############################################################"
 cat > etenbr_installer.r<< EOF
 #!/usr/bin/r
 
+##	IF YOUR SYSTEM IS BEHIND A PROXY, MODIFY THE FOLLOWING AND UNCOMMENT THEM
+#	Sys.setenv(http_proxy="http://user:passwd@url:port")
+#	Sys.setenv(http_proxy="https://user:passwd@url:port")
+
 update.packages(ask = FALSE)
 
 install.packages("readr")
