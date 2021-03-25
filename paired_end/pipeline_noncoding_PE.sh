@@ -61,31 +61,19 @@ mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/gtf/
 
 : << 'END'
-
 #ADD A HASH BEFORE THE COLON ABOVE IF INPUT FILES ARE SRA (ALSO FIND THE CORRESPONDING TAG BELOW)
 #REMOVE THE HASH (IF ANY) BEFORE THE COLON ABOVE IF INPUT FILES ARE FASTQ/FASTQ.GZ (ALSO FIND THE CORRESPONDING TAG BELOW)
-
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Running fastq-dump-----------"
-
 cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
-
 ##SRA to Fastq files
-
 for file in $(ls $sra)
 do
-
 fasterq-dump $sra/$file --split-files -v -p -b 100 -c 1024 -m 10240 -e 50       #resource limit
-
 done
-
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Conversion to FastQ complete. Compressing now.-----------"
-
 pigz -v *.fastq #multhreaded gzip #resource limit
-
 fastq_f=~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/
-
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "-----All SRAs split and converted to fastq.gz----"
-
 END
 
 #ADD A HASH BEFORE THE END ABOVE IF INPUT FILES ARE SRA (ALSO FIND THE CORRESPONDING TAG ABOVE)
@@ -273,6 +261,7 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------stringtie complete-----------
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------creating r script to read ctabs and give DEGs-------------"
 
 cat > ~/projects/$proj/pipeline_result/$job/scripts/ctab_to_deseq2.r<< EOF
+
 #!/usr/bin/r
 
 library("stringr")
@@ -281,14 +270,11 @@ library("ggplot2")
 library("dplyr")
 library("readr")
 library("tximport")
-library("ashr")
-library("tidyverse")
-library("apeglm")
-library("vsn")
 library("gplots")
 
 setwd("/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs")
 getwd()
+
 list.files()
 
 #Add all .ctab files in a vector
@@ -306,11 +292,9 @@ no_samp <- (length(files) - no_cont)
 # Define conditions for the samples
 sampleTable <- data.frame(condition = factor(c(rep("Sample",no_samp), rep("Control",no_cont))))
 rownames(sampleTable) <- colnames(txi$counts)
-
 dds <- DESeqDataSetFromTximport(txi, sampleTable, ~condition)
-dds <- dds[rowSums(counts(dds)) > 5,]
+dds <- dds[rowSums(counts(dds)) > 10,]
 dds <-DESeq(dds)
-
 vst <- vst(dds, blind=FALSE)
 
 # Plot PCA plot
@@ -322,9 +306,9 @@ a + geom_label(aes(label = coldata$condition),)
 nudge <- position_nudge(y = 1)
 a + geom_label(aes(label = coldata$condition), position = nudge)
 a + geom_text(aes(label = coldata$condition), position = nudge, size=3 )
-boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation_plasma", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
+boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
 boxplot(assay(vst), col= c("Red"), pch=".",
-vertical=TRUE, cex.axis=0.5, main = "Boxplot of plasma samples using vst method",
+vertical=TRUE, cex.axis=0.5, main = "Boxplot of samples using vst method",
 las=2, ylab="assay(vst)", xlab="Samples", ylim=c(-10,30),font.main= 5, font.axis=0.5, font.lab=2 )
 
 # Plot correlation heatmap
@@ -337,9 +321,9 @@ heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
             Colv=TRUE, cexRow=0.9, cexCol=0.9, key=F,
             font=2,
             RowSideColors=cols, ColSideColors=cols)
+
 #dispersion plot
 plotDispEsts(dds)
-
 res <- results(dds, contrast=c("condition","Sample","Control" ))
 summary(res)
 grp.mean <- sapply(levels(dds$condition),
@@ -348,8 +332,8 @@ grp.mean <- sapply(levels(dds$condition),
 norm.counts <- counts(dds, normalized=TRUE)
 all <- data.frame(res, assay(vst))
 nrow(all)
-write.table(all, file="deseq2_sample_vs_control.csv",sep=",")
-write.table(assay(vst), file="vst_table.csv",sep=",")
+write.table(all, file="stie_degs.csv",sep=",")
+write.table(assay(vst), file="stie_vst_table.csv",sep=",")
 
 EOF
 
@@ -367,7 +351,7 @@ mv -v ~/projects/$proj/pipeline_result/$job/scripts/* ~/projects/$proj/pipeline_
 
 #END
 
-: << 'END'
+#: << 'END'
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Generating feature counts...-------------"
 
@@ -377,40 +361,118 @@ featureCounts -T 50 -t gene -g gene_id -a $gtf_f -o counts.txt -M *.bam	#resourc
 	#-T number of threads
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Done Generating count data-----------"
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moving Results...-----------"
 
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moving Results...-----------"
 mv -v *.txt ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
 mv -v *.summary ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
-
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Results moved to results featureCounts---------"
-
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Finished with featureCounts!!!-----"
 
-END
+#END
 
-##-----------------------------------------##
+#: << 'END'
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Doing DESeq2 with feature counts data-------------"
 
-: << 'END'
-### DeSeq2 in R
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------generating DESeq2 script-------------"
+
+cd ~/projects/$proj/pipeline_result/$job/scripts/
+cat > ~/projects/$proj/pipeline_result/$job/scripts/featurecounts_to_deseq2.r<< EOF
+
+library(stringr)
+library(DESeq2)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(gplots)
+
+setwd("~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/")
+getwd()
+
+counts=read.table(file = "counts.txt", sep="", head = T,row.names = "Geneid")#skip = 1, row.names = "Geneid")
+countsnew <- counts %>% select(-c(1:5))
+colnames(countsnew)=str_split_fixed(colnames(countsnew),"\\.",12)[,1]
+colnames(countsnew) <- gsub(" ","_",colnames(countsnew))
+con_pos <- grep("N",colnames(countsnew),ignore.case = TRUE)
+con <- length(con_pos)
+srr_pos <- which(!(c(1:ncol(countsnew)) %in% con_pos))
+srr <- length(srr_pos)
+co <- countsnew
+countsnew <- co[,c(srr_pos)]
+countsnew <- cbind(countsnew,co[,c(con_pos)])
+countsnew <- countsnew[rowSums(countsnew) > 0,]
+countsnew <- countsnew[,]+1 
+  
+# Define conditions for the samples
+mycols = data.frame(row.names = (colnames(countsnew)))
+coldata <- data.frame(mycols, condition = factor(c(rep("disease",srr),rep("control", con))))
+coldata
+
+# check if row names and colum names from sample and count matrix matches.
+all(rownames(coldata) %in% colnames(countsnew))
+all(rownames(coldata) == colnames(countsnew))
+
+# Built the data frame to be used by DESeq2 package.
+dds=DESeqDataSetFromMatrix(countData = countsnew,colData = coldata,design = ~ condition)
+dds
+dds <- dds[rowSums(counts(dds)) > 10,]
+dds <- DESeq(dds)
+  
+vst <- vst(dds, blind=FALSE)
+# Plot PCA plot
+plotPCA(vst, intgroup="condition", ntop=nrow(counts(dds)))
+  
+# Explore PCA plot
+a <- DESeq2::plotPCA(vst, intgroup="condition")
+a + geom_label(aes(label = coldata$condition),)
+nudge <- position_nudge(y = 1)
+a + geom_label(aes(label = coldata$condition), position = nudge)
+a + geom_text(aes(label = coldata$condition), position = nudge, size=3 )
+boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
+boxplot(assay(vst), col= c("Red"), pch=".",
+vertical=TRUE, cex.axis=0.5, main = "Boxplot of samples using vst method",
+las=2, ylab="assay(vst)", xlab="Samples", ylim=c(-10,30),font.main= 5, font.axis=0.5, font.lab=2 )
+# Plot correlation heatmap
+cU <-cor( as.matrix(assay(vst)))
+cols <- c("dodgerblue3", "firebrick3")[coldata$condition]
+heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
+            labCol=colnames(cU), labRow=colnames(cU),
+            distfun=function(c) as.dist(1 - c),
+            trace="none",
+            Colv=TRUE, cexRow=0.9, cexCol=0.9, key=F,
+            font=2,
+            RowSideColors=cols, ColSideColors=cols)
+#dispersion plot
+plotDispEsts(dds)
+  
+res <- results(dds, contrast=c("condition","disease", "control"))
+#res_plasma <- res_plasma[order(res_plasma$pvalue),]
+summary(res)
+grp.mean <- sapply(levels(dds$condition),
+                     function(lvl)
+                       rowMeans(counts(dds,normalized=TRUE)[,dds$condition== lvl]))
+norm.counts <- counts(dds, normalized=TRUE)  
+all <- data.frame(res, assay(vst))
+nrow(all)
+write.table(all, file="fc_degs.csv",sep=",")
+write.table(assay(vst), file="fc_vst_table.csv",sep=",")
+
+EOF
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Calling R for DeSeq2-------------"
 
-cp $deseq2 ~/projects/$proj/pipeline_result/$job/scripts/deseq2.R
-cd ~/projects/$proj/pipeline_result/$job/scripts/
+r featurecounts_to_deseq2.r
 
-r deseq2.R
-
-mv -v res.csv bak_res.csv
-echo -n "", > res.csv; cat bak_res.csv >> res.csv #fixes the left shift of column names
-rm bak_res.csv
+#fixing left shift of column names
+mv -v fc_degs.csv bak_fc_degs.csv
+echo -n "", > fc_degs.csv; cat bak_fc_degs.csv >> fc_degs.csv 
+rm bak_fc_degs.csv
 
 mv -v res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
 echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
 rm bak_res_PAdj_cutoff.csv
-
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------DeSeq2 Complete-------------"
 
-END
+#END
 
 ##-----------------------------------------------##
 
@@ -422,6 +484,8 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Deleting Trimmed FastQ Files--
 rm -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastp/*
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Deleting FastQ files-------------"
 rm -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/fastq_files/*
+echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Deleting redundant bam files-------------"
+rm -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/ctabs/*.bam
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Clean Up Completed !!!-------------"
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------Compressing BAM files-------------"
