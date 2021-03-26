@@ -55,8 +55,11 @@ mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringti
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/merge/gtfs/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/merge/abundance/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/ctabs/
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/degs/stringtie
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/degs/featurecounts
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/deseq/stringtie
+mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/deseq/featurecounts
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/reference_genome/
 mkdir -p ~/projects/$proj/pipeline_result/$job/data/workflow_PE/gtf/
 
@@ -240,13 +243,11 @@ find ./ -name *t_data.ctab > temp
 #finds all paths to files with "t_data.ctab" in name and writes them to a "temp" file
 echo "found `cat temp | wc -l` ctabs at:"
 cat temp
-echo "..."
-mkdir -p all_ctabs #creates a directory to collect all the .ctabs
 echo "copying to consolidated location"
 #loop to read the paths from temp file one by one and store in "x"
 for x in $(cat temp)
 do
-cp -v $x all_ctabs/`echo $x | awk -F "/" '{print $(NF-1)}' | sed s/.bam//`.ctab
+cp -v $x ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs/`echo $x | awk -F "/" '{print $(NF-1)}' | sed s/.bam//`.ctab
 #copies each file (using path stored in "x") to the folder "all_ctabs" and renames it according to source file name.
 done #loop end
 
@@ -348,13 +349,11 @@ r ctab_to_deseq2.r
 
 sleep 15
 
-rm -v ~/projects/$proj/pipeline_result/$job/scripts/ctab_to_deseq2.r
-sleep 02
-mv -v ~/projects/$proj/pipeline_result/$job/scripts/* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/degs/stringtie/
+mv -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs/stie_* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/deseq/stringtie/
 
 #END
 
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Fixing column leftshift---TO BE DONE--"
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Fixing column leftshift---{{{{{{{{{{{{{{{{{{{{{{{TO BE DONE}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}--"
 
 mv res.csv bak_res.csv
 echo -n "", > res.csv; cat bak_res.csv >> res.csv #fixes the left shift of column names
@@ -427,21 +426,34 @@ dds <- DESeq(dds)
   
 vst <- vst(dds, blind=FALSE)
 # Plot PCA plot
+svg("fc_pca_vst.svg")
 plotPCA(vst, intgroup="condition", ntop=nrow(counts(dds)))
-  
+dev.off()
+
 # Explore PCA plot
+svg("fc_pca_vst_2.svg")
 a <- DESeq2::plotPCA(vst, intgroup="condition")
 a + geom_label(aes(label = coldata$condition),)
 nudge <- position_nudge(y = 1)
 a + geom_label(aes(label = coldata$condition), position = nudge)
 a + geom_text(aes(label = coldata$condition), position = nudge, size=3 )
+dev.off()
+
+svg("fc_boxplot_vst.svg")
 boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
+dev.off()
+
+svg("fc_boxplot_samples.svg")
 boxplot(assay(vst), col= c("Red"), pch=".",
 vertical=TRUE, cex.axis=0.5, main = "Boxplot of samples using vst method",
 las=2, ylab="assay(vst)", xlab="Samples", ylim=c(-10,30),font.main= 5, font.axis=0.5, font.lab=2 )
+dev.off()
+
 # Plot correlation heatmap
 cU <-cor( as.matrix(assay(vst)))
 cols <- c("dodgerblue3", "firebrick3")[coldata$condition]
+
+svg("fc_heatmap.svg")
 heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
             labCol=colnames(cU), labRow=colnames(cU),
             distfun=function(c) as.dist(1 - c),
@@ -449,11 +461,14 @@ heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
             Colv=TRUE, cexRow=0.9, cexCol=0.9, key=F,
             font=2,
             RowSideColors=cols, ColSideColors=cols)
+dev.off() 
+
 #dispersion plot
+svg("fc_dispersion.svg")
 plotDispEsts(dds)
+dev.off() 
   
 res <- results(dds, contrast=c("condition","disease", "control"))
-#res_plasma <- res_plasma[order(res_plasma$pvalue),]
 summary(res)
 grp.mean <- sapply(levels(dds$condition),
                      function(lvl)
@@ -469,6 +484,8 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Calling R for DeSeq2---------
 
 r featurecounts_to_deseq2.r
 
+sleep 15
+
 #fixing left shift of column names
 mv -v fc_degs.csv bak_fc_degs.csv
 echo -n "", > fc_degs.csv; cat bak_fc_degs.csv >> fc_degs.csv 
@@ -478,6 +495,9 @@ mv -v res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
 echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
 rm bak_res_PAdj_cutoff.csv
 echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------DeSeq2 Complete-------------"
+
+mv -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/fc_* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/deseq/featurecounts/
+
 
 #END
 
