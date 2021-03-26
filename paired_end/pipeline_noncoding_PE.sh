@@ -261,9 +261,7 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------stringtie complete-----------
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------creating r script to read ctabs and give DEGs-------------"
 
 cat > ~/projects/$proj/pipeline_result/$job/scripts/ctab_to_deseq2.r<< EOF
-
 #!/usr/bin/r
-
 library("stringr")
 library("DESeq2")
 library("ggplot2")
@@ -271,49 +269,53 @@ library("dplyr")
 library("readr")
 library("tximport")
 library("gplots")
-
-setwd("/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs")
+setwd("/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/all_ctabs") #path to ctabs
 getwd()
-
 list.files()
-
 #Add all .ctab files in a vector
-files <- list.files(getwd(), pattern=".ctab", all.files=FALSE, full.names=FALSE) 
-
+files <- list.files(getwd(), pattern=".ctab", all.files=FALSE, full.names=FALSE)
+# Identify and count the sample and control files
+no_cont <-length(grep("control",files,ignore.case=TRUE))
+no_samp <- (length(files) - no_cont) 
 # Read the ctab files, and store in txi
 tmp <- read_tsv(files[1])
 tx2gene <- tmp[, c("t_name", "gene_id")]
 txi <- tximport(files=files, type = "stringtie", tx2gene = tx2gene) 
-
-# Identify and count the sample and control files
-no_cont <-length(grep("control",files,ignore.case=TRUE))
-no_samp <- (length(files) - no_cont)
-
 # Define conditions for the samples
 sampleTable <- data.frame(condition = factor(c(rep("Sample",no_samp), rep("Control",no_cont))))
-rownames(sampleTable) <- colnames(txi$counts)
+sample_names <- sapply(strsplit(files, "[.]"), `[`, 1)
+row.names(sampleTable) <- sample_names
 dds <- DESeqDataSetFromTximport(txi, sampleTable, ~condition)
 dds <- dds[rowSums(counts(dds)) > 10,]
 dds <-DESeq(dds)
 vst <- vst(dds, blind=FALSE)
-
 # Plot PCA plot
+svg("stie_pca_vst.svg")
 plotPCA(vst, intgroup="condition", ntop=nrow(counts(dds)))
-  
+dev.off()  
+
 # Explore PCA plot
+svg("stie_pca_vst_2.svg")
 a <- DESeq2::plotPCA(vst, intgroup="condition")
-a + geom_label(aes(label = coldata$condition),)
+a + geom_label(aes(label = sampleTable$condition),)
 nudge <- position_nudge(y = 1)
-a + geom_label(aes(label = coldata$condition), position = nudge)
-a + geom_text(aes(label = coldata$condition), position = nudge, size=3 )
+a + geom_label(aes(label = sampleTable$condition), position = nudge)
+a + geom_text(aes(label = sampleTable$condition), position = nudge, size=3 )
+dev.off()
+svg("stie_boxplot_vst.svg")
 boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
+dev.off() 
+
+svg("stie_boxplot_samples.svg")
 boxplot(assay(vst), col= c("Red"), pch=".",
 vertical=TRUE, cex.axis=0.5, main = "Boxplot of samples using vst method",
 las=2, ylab="assay(vst)", xlab="Samples", ylim=c(-10,30),font.main= 5, font.axis=0.5, font.lab=2 )
-
+dev.off() 
 # Plot correlation heatmap
 cU <-cor( as.matrix(assay(vst)))
-cols <- c("dodgerblue3", "firebrick3")[coldata$condition]
+cols <- c("dodgerblue3", "firebrick3")[sampleTable$condition]
+
+svg("stie_heatmap.svg")
 heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
             labCol=colnames(cU), labRow=colnames(cU),
             distfun=function(c) as.dist(1 - c),
@@ -321,9 +323,11 @@ heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
             Colv=TRUE, cexRow=0.9, cexCol=0.9, key=F,
             font=2,
             RowSideColors=cols, ColSideColors=cols)
-
+dev.off() 
 #dispersion plot
+svg("stie_dispersion.svg")
 plotDispEsts(dds)
+dev.off() 
 res <- results(dds, contrast=c("condition","Sample","Control" ))
 summary(res)
 grp.mean <- sapply(levels(dds$condition),
@@ -334,7 +338,6 @@ all <- data.frame(res, assay(vst))
 nrow(all)
 write.table(all, file="stie_degs.csv",sep=",")
 write.table(assay(vst), file="stie_vst_table.csv",sep=",")
-
 EOF
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------executing the ctab to deseq2 script-------------"
@@ -350,6 +353,16 @@ sleep 02
 mv -v ~/projects/$proj/pipeline_result/$job/scripts/* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/degs/stringtie/
 
 #END
+
+echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Fixing column leftshift---TO BE DONE--"
+
+mv res.csv bak_res.csv
+echo -n "", > res.csv; cat bak_res.csv >> res.csv #fixes the left shift of column names
+rm bak_res.csv 
+
+mv res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
+echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
+rm bak_res_PAdj_cutoff.csv 
 
 #: << 'END'
 
@@ -377,17 +390,14 @@ echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------generating DESeq2 script-----
 
 cd ~/projects/$proj/pipeline_result/$job/scripts/
 cat > ~/projects/$proj/pipeline_result/$job/scripts/featurecounts_to_deseq2.r<< EOF
-
 library(stringr)
 library(DESeq2)
 library(ggplot2)
 library(tidyverse)
 library(dplyr)
 library(gplots)
-
 setwd("~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/")
 getwd()
-
 counts=read.table(file = "counts.txt", sep="", head = T,row.names = "Geneid")#skip = 1, row.names = "Geneid")
 countsnew <- counts %>% select(-c(1:5))
 colnames(countsnew)=str_split_fixed(colnames(countsnew),"\\.",12)[,1]
@@ -406,11 +416,9 @@ countsnew <- countsnew[,]+1
 mycols = data.frame(row.names = (colnames(countsnew)))
 coldata <- data.frame(mycols, condition = factor(c(rep("disease",srr),rep("control", con))))
 coldata
-
 # check if row names and colum names from sample and count matrix matches.
 all(rownames(coldata) %in% colnames(countsnew))
 all(rownames(coldata) == colnames(countsnew))
-
 # Built the data frame to be used by DESeq2 package.
 dds=DESeqDataSetFromMatrix(countData = countsnew,colData = coldata,design = ~ condition)
 dds
@@ -455,7 +463,6 @@ all <- data.frame(res, assay(vst))
 nrow(all)
 write.table(all, file="fc_degs.csv",sep=",")
 write.table(assay(vst), file="fc_vst_table.csv",sep=",")
-
 EOF
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Calling R for DeSeq2-------------"
