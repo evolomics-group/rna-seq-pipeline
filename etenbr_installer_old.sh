@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# rna seq pipeline prerequisites install script (bash)
+# rna seq pipeline prerequisites install script for older systems (bash)
 
 echo "NOTE: root access is necessary for the script"
 echo "NOTE: for cluster environment, the script must be run on each node"
