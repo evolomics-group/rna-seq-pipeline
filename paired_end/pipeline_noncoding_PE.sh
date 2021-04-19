@@ -277,10 +277,16 @@ getwd()
 list.files()
 #Add all .ctab files in a vector
 files <- list.files(getwd(), pattern=".ctab", all.files=FALSE, full.names=FALSE)
-# Identify and count the sample and control files
+#Reorder control and sample files to match dataframe structure
+f1 <- grep("control",files)
+f1 <- files[f1]
+f2 <- files[!(files %in% f1)]
+f3 <- union(f2,f1)
+files <- f3
+# count the sample and control files
 no_cont <-length(grep("control",files,ignore.case=TRUE))
 no_samp <- (length(files) - no_cont) 
-# Read the ctab files, and store in txi
+#Read the ctab files, and store in txi
 tmp <- read_tsv(files[1])
 tx2gene <- tmp[, c("t_name", "gene_id")]
 txi <- tximport(files=files, type = "stringtie", tx2gene = tx2gene) 
@@ -296,7 +302,6 @@ vst <- vst(dds, blind=FALSE)
 svg("stie_pca_vst.svg")
 plotPCA(vst, intgroup="condition", ntop=nrow(counts(dds)))
 dev.off()  
-
 # Explore PCA plot
 svg("stie_pca_vst_2.svg")
 a <- DESeq2::plotPCA(vst, intgroup="condition")
@@ -308,7 +313,6 @@ dev.off()
 svg("stie_boxplot_vst.svg")
 boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
 dev.off() 
-
 svg("stie_boxplot_samples.svg")
 boxplot(assay(vst), col= c("Red"), pch=".",
 vertical=TRUE, cex.axis=0.5, main = "Boxplot of samples using vst method",
@@ -317,7 +321,6 @@ dev.off()
 # Plot correlation heatmap
 cU <-cor( as.matrix(assay(vst)))
 cols <- c("dodgerblue3", "firebrick3")[sampleTable$condition]
-
 svg("stie_heatmap.svg")
 heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
             labCol=colnames(cU), labRow=colnames(cU),
