@@ -357,8 +357,9 @@ mv -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/stringtie/a
 
 echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Fixing column leftshift---{{{{{{{{{{{{{{{{{{{{{{{TO BE DONE}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}--"
 
-mv res.csv bak_res.csv
-echo -n "", > res.csv; cat bak_res.csv >> res.csv #fixes the left shift of column names
+cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/deseq/stringtie/
+mv stie_degs.csv bak_res.csv
+echo -n "", > stie_degs.csv; cat bak_res.csv >> stie_degs.csv #fixes the left shift of column names
 rm bak_res.csv 
 
 mv res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
