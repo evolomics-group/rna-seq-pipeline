@@ -343,6 +343,8 @@ norm.counts <- counts(dds, normalized=TRUE)
 all <- data.frame(res, assay(vst))
 nrow(all)
 write.table(all, file="stie_degs.csv",sep=",")
+padj_cutoff <- all[all$padj <= 0.05,]
+write.table(padj_cutoff, file="stie_degs_padj.csv",sep=",")
 write.table(assay(vst), file="stie_vst_table.csv",sep=",")
 EOF
 
@@ -365,8 +367,8 @@ mv stie_degs.csv bak_res.csv
 echo -n "", > stie_degs.csv; cat bak_res.csv >> stie_degs.csv #fixes the left shift of column names
 rm bak_res.csv 
 
-mv res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
-echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
+mv stie_degs_padj.csv bak_res_PAdj_cutoff.csv
+echo -n "", > stie_degs_padj.csv; cat bak_res_PAdj_cutoff.csv >> stie_degs_padj.csv #fixes the left shift of column names
 rm bak_res_PAdj_cutoff.csv 
 
 
