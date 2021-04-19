@@ -1,6 +1,8 @@
 #!/bin/bash
+
 #SBATCH --job-name=tomato
-#SBATCH --ntasks=50
+#SBATCH --nodes=1
+#SBATCH --ntasks=56
 
 #################################################################
 #################     USER INSTRUCTIONS     #####################
@@ -363,143 +365,6 @@ mv res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
 echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
 rm bak_res_PAdj_cutoff.csv 
 
-#: << 'END'
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Generating feature counts...-------------"
-
-cd ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/samtools/
-
-featureCounts -T 50 -t gene -g gene_id -a $gtf_f -o counts.txt -M *.bam	#resource limit
-	#-T number of threads
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Done Generating count data-----------"
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------Moving Results...-----------"
-mv -v *.txt ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
-mv -v *.summary ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Results moved to results featureCounts---------"
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "--------Finished with featureCounts!!!-----"
-
-#END
-
-#: << 'END'
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Doing DESeq2 with feature counts data-------------"
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------generating DESeq2 script-------------"
-
-cd ~/projects/$proj/pipeline_result/$job/scripts/
-cat > ~/projects/$proj/pipeline_result/$job/scripts/featurecounts_to_deseq2.r<< EOF
-library(stringr)
-library(DESeq2)
-library(ggplot2)
-library(tidyverse)
-library(dplyr)
-library(gplots)
-setwd("~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/")
-getwd()
-counts=read.table(file = "counts.txt", sep="", head = T,row.names = "Geneid")#skip = 1, row.names = "Geneid")
-countsnew <- counts %>% select(-c(1:5))
-colnames(countsnew)=str_split_fixed(colnames(countsnew),"\\.",12)[,1]
-colnames(countsnew) <- gsub(" ","_",colnames(countsnew))
-con_pos <- grep("N",colnames(countsnew),ignore.case = TRUE)
-con <- length(con_pos)
-srr_pos <- which(!(c(1:ncol(countsnew)) %in% con_pos))
-srr <- length(srr_pos)
-co <- countsnew
-countsnew <- co[,c(srr_pos)]
-countsnew <- cbind(countsnew,co[,c(con_pos)])
-countsnew <- countsnew[rowSums(countsnew) > 0,]
-countsnew <- countsnew[,]+1 
-  
-# Define conditions for the samples
-mycols = data.frame(row.names = (colnames(countsnew)))
-coldata <- data.frame(mycols, condition = factor(c(rep("disease",srr),rep("control", con))))
-coldata
-# check if row names and colum names from sample and count matrix matches.
-all(rownames(coldata) %in% colnames(countsnew))
-all(rownames(coldata) == colnames(countsnew))
-# Built the data frame to be used by DESeq2 package.
-dds=DESeqDataSetFromMatrix(countData = countsnew,colData = coldata,design = ~ condition)
-dds
-dds <- dds[rowSums(counts(dds)) > 10,]
-dds <- DESeq(dds)
-  
-vst <- vst(dds, blind=FALSE)
-# Plot PCA plot
-svg("fc_pca_vst.svg")
-plotPCA(vst, intgroup="condition", ntop=nrow(counts(dds)))
-dev.off()
-
-# Explore PCA plot
-svg("fc_pca_vst_2.svg")
-a <- DESeq2::plotPCA(vst, intgroup="condition")
-a + geom_label(aes(label = coldata$condition),)
-nudge <- position_nudge(y = 1)
-a + geom_label(aes(label = coldata$condition), position = nudge)
-a + geom_text(aes(label = coldata$condition), position = nudge, size=3 )
-dev.off()
-
-svg("fc_boxplot_vst.svg")
-boxplot(assay(vst), outline = FALSE, main = "Boxplot based on vst transformation", font.main= 2, font.axis=0.5, font.lab=2, col=27, col.axis=2, cex=0.5, ylim=c(-10,11))
-dev.off()
-
-svg("fc_boxplot_samples.svg")
-boxplot(assay(vst), col= c("Red"), pch=".",
-vertical=TRUE, cex.axis=0.5, main = "Boxplot of samples using vst method",
-las=2, ylab="assay(vst)", xlab="Samples", ylim=c(-10,30),font.main= 5, font.axis=0.5, font.lab=2 )
-dev.off()
-
-# Plot correlation heatmap
-cU <-cor( as.matrix(assay(vst)))
-cols <- c("dodgerblue3", "firebrick3")[coldata$condition]
-
-svg("fc_heatmap.svg")
-heatmap.2(cU, symm=TRUE, col= colorRampPalette(c("darkblue","white"))(100),
-            labCol=colnames(cU), labRow=colnames(cU),
-            distfun=function(c) as.dist(1 - c),
-            trace="none",
-            Colv=TRUE, cexRow=0.9, cexCol=0.9, key=F,
-            font=2,
-            RowSideColors=cols, ColSideColors=cols)
-dev.off() 
-
-#dispersion plot
-svg("fc_dispersion.svg")
-plotDispEsts(dds)
-dev.off() 
-  
-res <- results(dds, contrast=c("condition","disease", "control"))
-summary(res)
-grp.mean <- sapply(levels(dds$condition),
-                     function(lvl)
-                       rowMeans(counts(dds,normalized=TRUE)[,dds$condition== lvl]))
-norm.counts <- counts(dds, normalized=TRUE)  
-all <- data.frame(res, assay(vst))
-nrow(all)
-write.table(all, file="fc_degs.csv",sep=",")
-write.table(assay(vst), file="fc_vst_table.csv",sep=",")
-EOF
-
-echo [`date +"%Y-%m-%d %H:%M:%S"`] "---------------Calling R for DeSeq2-------------"
-
-r featurecounts_to_deseq2.r
-
-sleep 15
-
-#fixing left shift of column names
-mv -v fc_degs.csv bak_fc_degs.csv
-echo -n "", > fc_degs.csv; cat bak_fc_degs.csv >> fc_degs.csv 
-rm bak_fc_degs.csv
-
-mv -v res_PAdj_cutoff.csv bak_res_PAdj_cutoff.csv
-echo -n "", > res_PAdj_cutoff.csv; cat bak_res_PAdj_cutoff.csv >> res_PAdj_cutoff.csv #fixes the left shift of column names
-rm bak_res_PAdj_cutoff.csv
-echo [`date +"%Y-%m-%d %H:%M:%S"`]"---------------DeSeq2 Complete-------------"
-
-mv -v ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/featureCounts/fc_* ~/projects/$proj/pipeline_result/$job/data/workflow_PE/results/deseq/featurecounts/
-
-
-#END
 
 ##-----------------------------------------------##
 
